@@ -1,0 +1,36 @@
+{
+  "view": "side",
+  "image_path": "D:\\Projects\\2d To 3D\\Ref Image\\Side.jpeg",
+  "shapes": [
+    {
+      "id": "rect_0",
+      "type": "rectangle",
+      "view": "side",
+      "params": {
+        "x": 0.0,
+        "y": 97.0,
+        "width": 109.0,
+        "height": 7.0
+      },
+      "vertices": [
+        [
+          0.0,
+          98.0
+        ],
+        [
+          0.0,
+          103.0
+        ],
+        [
+          108.0,
+          103.0
+        ],
+        [
+          96.0,
+          97.0
+        ]
+      ]
+    }
+  ],
+  "lines": []
+}

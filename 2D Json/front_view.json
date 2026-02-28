@@ -1,0 +1,63 @@
+{
+  "view": "front",
+  "image_path": "D:\\Projects\\2d To 3D\\Ref Image\\Front.jpeg",
+  "shapes": [
+    {
+      "id": "rect_0",
+      "type": "rectangle",
+      "view": "front",
+      "params": {
+        "x": 20.0,
+        "y": 13.0,
+        "width": 58.0,
+        "height": 87.0
+      },
+      "vertices": [
+        [
+          77.0,
+          13.0
+        ],
+        [
+          20.0,
+          13.0
+        ],
+        [
+          20.0,
+          99.0
+        ],
+        [
+          77.0,
+          99.0
+        ]
+      ]
+    }
+  ],
+  "lines": [
+    {
+      "id": "line_2",
+      "type": "line",
+      "view": "front",
+      "start": [
+        74.0,
+        96.0
+      ],
+      "end": [
+        74.0,
+        11.0
+      ]
+    },
+    {
+      "id": "line_4",
+      "type": "line",
+      "view": "front",
+      "start": [
+        23.0,
+        96.0
+      ],
+      "end": [
+        73.0,
+        96.0
+      ]
+    }
+  ]
+}
