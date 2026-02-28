@@ -1,0 +1,8 @@
+trimesh
+shapely
+numpy
+pyglet
+opencv-python
+google-generativeai
+python-dotenv
+pillow
