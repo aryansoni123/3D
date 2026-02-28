@@ -1,0 +1,105 @@
+{
+  "coordinate_system": {
+    "origin": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    "axes": {
+      "front_view": {
+        "horizontal": "x",
+        "vertical": "z"
+      },
+      "top_view": {
+        "horizontal": "x",
+        "vertical": "y"
+      },
+      "side_view": {
+        "horizontal": "y",
+        "vertical": "z"
+      }
+    }
+  },
+  "features": [
+    {
+      "id": "main_body",
+      "type": "extrude",
+      "profile": {
+        "shape": "rectangle",
+        "width": 83.0,
+        "height": 87.0
+      },
+      "dimensions": {
+        "width": 83.0,
+        "depth": 55.0,
+        "height": 87.0
+      },
+      "position": {
+        "x": 14.0,
+        "y": 6.0,
+        "z": 13.0
+      },
+      "source_region": "region_0"
+    },
+    {
+      "id": "body_edge",
+      "type": "extrude",
+      "profile": {
+        "shape": "rectangle",
+        "width": 83.0,
+        "height": 87.0
+      },
+      "dimensions": {
+        "width": 83.0,
+        "depth": 4.0,
+        "height": 87.0
+      },
+      "position": {
+        "x": 14.0,
+        "y": 61.0,
+        "z": 13.0
+      },
+      "source_region": "region_1"
+    },
+    {
+      "id": "side_step",
+      "type": "extrude",
+      "profile": {
+        "shape": "rectangle",
+        "width": 4.0,
+        "height": 43.5
+      },
+      "dimensions": {
+        "width": 4.0,
+        "depth": 55.0,
+        "height": 43.5
+      },
+      "position": {
+        "x": 97.0,
+        "y": 6.0,
+        "z": 13.0
+      },
+      "source_region": "region_2"
+    },
+    {
+      "id": "step_corner",
+      "type": "extrude",
+      "profile": {
+        "shape": "rectangle",
+        "width": 4.0,
+        "height": 43.5
+      },
+      "dimensions": {
+        "width": 4.0,
+        "depth": 4.0,
+        "height": 43.5
+      },
+      "position": {
+        "x": 97.0,
+        "y": 61.0,
+        "z": 13.0
+      },
+      "source_region": "region_3"
+    }
+  ]
+}

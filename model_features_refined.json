@@ -1,0 +1,85 @@
+{
+  "coordinate_system": {
+    "origin": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    "axes": {
+      "front_view": {
+        "horizontal": "x",
+        "vertical": "z"
+      },
+      "top_view": {
+        "horizontal": "x",
+        "vertical": "y"
+      },
+      "side_view": {
+        "horizontal": "y",
+        "vertical": "z"
+      }
+    }
+  },
+  "features": [
+    {
+      "id": "base_block",
+      "type": "extrude",
+      "profile": {
+        "shape": "rectangle",
+        "width": 87.0,
+        "height": 109.0
+      },
+      "dimensions": {
+        "width": 87.0,
+        "depth": 109.0,
+        "height": 7.0
+      },
+      "position": {
+        "x": 14.0,
+        "y": 0.0,
+        "z": 13.0
+      },
+      "source_shapes": {
+        "front_view": [
+          "rect_0"
+        ],
+        "top_view": [
+          "rect_0"
+        ],
+        "side_view": [
+          "rect_0"
+        ]
+      }
+    },
+    {
+      "id": "upright_block",
+      "type": "extrude",
+      "profile": {
+        "shape": "rectangle",
+        "width": 87.0,
+        "height": 4.0
+      },
+      "dimensions": {
+        "width": 87.0,
+        "depth": 4.0,
+        "height": 80.0
+      },
+      "position": {
+        "x": 14.0,
+        "y": 0.0,
+        "z": 20.0
+      },
+      "source_shapes": {
+        "front_view": [
+          "rect_0"
+        ],
+        "top_view": [
+          "rect_0"
+        ],
+        "side_view": [
+          "rect_0"
+        ]
+      }
+    }
+  ]
+}

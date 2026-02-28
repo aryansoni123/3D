@@ -1,0 +1,50 @@
+{
+  "regions": [
+    {
+      "id": "region_0",
+      "x": 14.0,
+      "y": 6.0,
+      "width": 83.0,
+      "depth": 55.0,
+      "z_min": 13.0,
+      "z_max": 100.0,
+      "height": 87.0
+    },
+    {
+      "id": "region_1",
+      "x": 14.0,
+      "y": 61.0,
+      "width": 83.0,
+      "depth": 4.0,
+      "z_min": 13.0,
+      "z_max": 100.0,
+      "height": 87.0
+    },
+    {
+      "id": "region_2",
+      "x": 97.0,
+      "y": 6.0,
+      "width": 4.0,
+      "depth": 55.0,
+      "z_min": 13.0,
+      "z_max": 100.0,
+      "height": 87.0
+    },
+    {
+      "id": "region_3",
+      "x": 97.0,
+      "y": 61.0,
+      "width": 4.0,
+      "depth": 4.0,
+      "z_min": 13.0,
+      "z_max": 100.0,
+      "height": 87.0
+    }
+  ],
+  "metadata": {
+    "x_source": "top_view",
+    "y_source": "top_view",
+    "z_source": "side_view",
+    "total_regions": 4
+  }
+}

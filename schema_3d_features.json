@@ -1,0 +1,171 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "3D Feature JSON Schema",
+  "description": "Precise schema for 3D feature reconstruction from orthographic views",
+  "type": "object",
+  "required": ["features", "coordinate_system"],
+  "properties": {
+    "coordinate_system": {
+      "type": "object",
+      "description": "Defines the 3D coordinate system used",
+      "required": ["origin", "axes"],
+      "properties": {
+        "origin": {
+          "type": "object",
+          "description": "Origin point in 3D space",
+          "required": ["x", "y", "z"],
+          "properties": {
+            "x": {"type": "number", "description": "X coordinate (typically 0)"},
+            "y": {"type": "number", "description": "Y coordinate (typically 0)"},
+            "z": {"type": "number", "description": "Z coordinate (typically 0)"}
+          }
+        },
+        "axes": {
+          "type": "object",
+          "description": "Axis definitions for each view",
+          "properties": {
+            "front_view": {
+              "type": "object",
+              "description": "Front view shows X (horizontal) and Z (vertical) axes",
+              "properties": {
+                "horizontal": {"type": "string", "enum": ["x"], "default": "x"},
+                "vertical": {"type": "string", "enum": ["z"], "default": "z"}
+              }
+            },
+            "top_view": {
+              "type": "object",
+              "description": "Top view shows X (horizontal) and Y (depth) axes",
+              "properties": {
+                "horizontal": {"type": "string", "enum": ["x"], "default": "x"},
+                "vertical": {"type": "string", "enum": ["y"], "default": "y"}
+              }
+            },
+            "side_view": {
+              "type": "object",
+              "description": "Side view shows Y (horizontal) and Z (vertical) axes",
+              "properties": {
+                "horizontal": {"type": "string", "enum": ["y"], "default": "y"},
+                "vertical": {"type": "string", "enum": ["z"], "default": "z"}
+              }
+            }
+          }
+        }
+      }
+    },
+    "features": {
+      "type": "array",
+      "description": "List of 3D features (extrude or cut operations)",
+      "items": {
+        "type": "object",
+        "required": ["id", "type", "profile", "dimensions", "position", "source_shapes"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique identifier for this feature"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["extrude", "cut"],
+            "description": "extrude = add material, cut = remove material"
+          },
+          "profile": {
+            "type": "object",
+            "description": "2D profile shape definition",
+            "required": ["shape"],
+            "oneOf": [
+              {
+                "properties": {
+                  "shape": {"const": "rectangle"},
+                  "width": {"type": "number", "minimum": 0, "description": "Width in X direction"},
+                  "height": {"type": "number", "minimum": 0, "description": "Height in Z direction"}
+                },
+                "required": ["width", "height"]
+              },
+              {
+                "properties": {
+                  "shape": {"const": "circle"},
+                  "radius": {"type": "number", "minimum": 0, "description": "Circle radius"}
+                },
+                "required": ["radius"]
+              },
+              {
+                "properties": {
+                  "shape": {"const": "polygon"},
+                  "points": {
+                    "type": "array",
+                    "minItems": 3,
+                    "items": {
+                      "type": "array",
+                      "minItems": 2,
+                      "maxItems": 2,
+                      "items": {"type": "number"},
+                      "description": "[x, z] coordinates in profile plane"
+                    }
+                  }
+                },
+                "required": ["points"]
+              }
+            ]
+          },
+          "dimensions": {
+            "type": "object",
+            "description": "3D dimensions extracted from views",
+            "required": ["width", "depth", "height"],
+            "properties": {
+              "width": {
+                "type": "number",
+                "minimum": 0,
+                "description": "Size along X-axis (from front/top view horizontal)"
+              },
+              "depth": {
+                "type": "number",
+                "minimum": 0,
+                "description": "Size along Y-axis (from top/side view horizontal)"
+              },
+              "height": {
+                "type": "number",
+                "minimum": 0,
+                "description": "Size along Z-axis (from front/side view vertical)"
+              }
+            }
+          },
+          "position": {
+            "type": "object",
+            "description": "3D position of feature origin (bottom-left-front corner for rectangles)",
+            "required": ["x", "y", "z"],
+            "properties": {
+              "x": {"type": "number", "description": "X coordinate"},
+              "y": {"type": "number", "description": "Y coordinate"},
+              "z": {"type": "number", "description": "Z coordinate"}
+            }
+          },
+          "source_shapes": {
+            "type": "object",
+            "description": "References to 2D shapes from input views that contributed to this feature",
+            "properties": {
+              "front_view": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "IDs of shapes from front_view.json"
+              },
+              "top_view": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "IDs of shapes from top_view.json"
+              },
+              "side_view": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "IDs of shapes from side_view.json"
+              }
+            }
+          },
+          "notes": {
+            "type": "string",
+            "description": "Optional notes about this feature (e.g., 'elevated platform', 'through hole')"
+          }
+        }
+      }
+    }
+  }
+}
