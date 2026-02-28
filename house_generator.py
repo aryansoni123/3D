@@ -11,13 +11,13 @@ from shapely.geometry import Polygon
 # -----------------------------
 # Create 3D mesh from 2D profile
 # -----------------------------
-def create_extruded_mesh(profile, depth):
+def create_extruded_mesh(profile, dimensions):
     """
-    Create a 3D mesh by extruding a 2D profile.
+    Create a 3D mesh using dimensions as single source of truth.
 
     Args:
-        profile: Dictionary with "shape" key and shape-specific parameters
-        depth: Extrusion depth along Y-axis
+        profile: Dictionary with "shape" key (defines type only)
+        dimensions: Dictionary with "width", "depth", "height" (X, Y, Z extents)
 
     Returns:
         trimesh.Trimesh: The generated 3D mesh
@@ -26,11 +26,14 @@ def create_extruded_mesh(profile, depth):
     if not shape:
         raise ValueError("Profile must have a 'shape' field")
 
+    width = dimensions.get("width", 0.0)
+    depth = dimensions.get("depth", 0.0)
+    height = dimensions.get("height", 0.0)
+
+    if width <= 0 or depth <= 0 or height <= 0:
+        raise ValueError(f"All dimensions must be positive: width={width}, depth={depth}, height={height}")
+
     if shape == "rectangle":
-        width = profile.get("width")
-        height = profile.get("height")
-        if width is None or height is None:
-            raise ValueError("Rectangle profile must have 'width' and 'height'")
         # trimesh box: extents are (width, depth, height) in (X, Y, Z)
         mesh = trimesh.creation.box(extents=(width, depth, height))
         return mesh
@@ -38,8 +41,10 @@ def create_extruded_mesh(profile, depth):
     elif shape == "circle":
         radius = profile.get("radius")
         if radius is None:
-            raise ValueError("Circle profile must have 'radius'")
+            # Infer radius from width (assume circular profile)
+            radius = width / 2.0
         # trimesh cylinder: height is along Y-axis by default
+        # For our coordinate system: radius defines X/Z circle, height is Y (depth)
         mesh = trimesh.creation.cylinder(radius=radius, height=depth, sections=64)
         return mesh
 
@@ -135,27 +140,39 @@ def generate_model(data):
         # Support both old format (depth) and new format (dimensions)
         dimensions = feature.get("dimensions")
         if dimensions:
-            # New format: use dimensions.depth
-            depth = dimensions.get("depth")
-            if depth is None:
-                raise ValueError(f"Feature '{feature_id}': dimensions object missing 'depth' field")
+            # New format: use dimensions as single source of truth
+            if not all(k in dimensions for k in ["width", "depth", "height"]):
+                raise ValueError(
+                    f"Feature '{feature_id}': dimensions must have 'width', 'depth', and 'height'"
+                )
         else:
-            # Old format: use top-level depth
+            # Old format: construct dimensions from profile + depth
             depth = feature.get("depth")
             if depth is None:
                 raise ValueError(
                     f"Feature '{feature_id}': Missing 'depth' field. "
-                    "Either provide 'depth' (old format) or 'dimensions.depth' (new format)."
+                    "Either provide 'depth' (old format) or 'dimensions' (new format)."
                 )
+            # Infer dimensions from profile
+            profile_width = profile.get("width", 0.0)
+            profile_height = profile.get("height", 0.0)
+            dimensions = {
+                "width": profile_width,
+                "depth": depth,
+                "height": profile_height
+            }
 
-        if depth <= 0:
-            print(f"Warning: Feature '{feature_id}' has non-positive depth {depth}, skipping")
+        if dimensions["width"] <= 0 or dimensions["depth"] <= 0 or dimensions["height"] <= 0:
+            print(
+                f"Warning: Feature '{feature_id}' has non-positive dimensions "
+                f"{dimensions}, skipping"
+            )
             continue
 
         position = feature.get("position", {})
 
         try:
-            mesh = create_extruded_mesh(profile, depth)
+            mesh = create_extruded_mesh(profile, dimensions)
             mesh = apply_position(mesh, position)
         except Exception as e:
             raise RuntimeError(f"Error processing feature '{feature_id}': {e}") from e

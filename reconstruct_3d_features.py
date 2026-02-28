@@ -8,6 +8,8 @@ import google.generativeai as genai
 from dotenv import load_dotenv
 from PIL import Image
 
+from geometry_solver import solve_geometry
+
 
 GEMINI_MODEL_NAME_DEFAULT = "gemini-flash-latest"
 
@@ -55,197 +57,85 @@ def load_image_from_json(json_data: Dict[str, Any], base_dir: Path = None) -> Un
         return None
 
 
-def build_prompt(front: Dict[str, Any], top: Dict[str, Any], side: Dict[str, Any]) -> str:
+def build_semantic_prompt(regions_data: Dict[str, Any], front: Dict[str, Any], top: Dict[str, Any], side: Dict[str, Any]) -> str:
     """
-    Build a text-only prompt for Gemini that explains the task and embeds
-    the OpenCV-extracted 2D geometry for all three views.
+    Build a prompt for Gemini to classify regions semantically.
+    
+    Geometry is already solved - LLM only needs to determine:
+    - operation: "extrude" or "cut"
+    - role: descriptive name (e.g., "table_top", "leg", "hole")
+    - height_label: "tall", "short", "flush" (optional, for step detection)
     """
-    # Precise schema with coordinate system and dimension extraction rules
+    
+    regions = regions_data.get("regions", [])
+    
+    # Example output schema - LLM only provides semantics
     target_schema_example = {
-        "coordinate_system": {
-            "origin": {"x": 0, "y": 0, "z": 0},
-            "axes": {
-                "front_view": {"horizontal": "x", "vertical": "z"},
-                "top_view": {"horizontal": "x", "vertical": "y"},
-                "side_view": {"horizontal": "y", "vertical": "z"}
-            }
-        },
         "features": [
             {
-                "id": "base_block",
-                "type": "extrude",
-                "profile": {
-                    "shape": "rectangle",
-                    "width": 100.0,
-                    "height": 70.0
-                },
-                "dimensions": {
-                    "width": 100.0,
-                    "depth": 80.0,
-                    "height": 70.0
-                },
-                "position": {"x": 0.0, "y": 0.0, "z": 0.0},
-                "source_shapes": {
-                    "front_view": ["rect_0"],
-                    "top_view": ["rect_0"],
-                    "side_view": ["rect_0"]
-                }
+                "region_id": "region_0",
+                "operation": "extrude",
+                "role": "table_top",
+                "height_label": "tall"
             },
             {
-                "id": "hole_cut",
-                "type": "cut",
-                "profile": {
-                    "shape": "circle",
-                    "radius": 10.0
-                },
-                "dimensions": {
-                    "width": 20.0,
-                    "depth": 5.0,
-                    "height": 20.0
-                },
-                "position": {"x": 50.0, "y": 0.0, "z": 50.0},
-                "source_shapes": {
-                    "front_view": ["circle_1"],
-                    "top_view": ["circle_1"]
-                }
+                "region_id": "region_1",
+                "operation": "extrude",
+                "role": "table_leg_block",
+                "height_label": "short"
             }
         ]
     }
-
-    # Step-by-step instructions with explicit coordinate extraction
+    
     instructions = f"""
-You are a precision CAD geometry reconstruction engine. Reconstruct 3D features from orthographic views.
+You are a CAD geometry semantic classifier. Your job is to understand the INTENT behind geometric regions.
 
-STEP-BY-STEP PROCESS:
+IMPORTANT: All geometric dimensions have already been computed from the 2D views using a priority system:
+- X, Y positions and dimensions come from TOP view
+- Z (height) comes from SIDE/FRONT views
 
-STEP 1: UNDERSTAND COORDINATE SYSTEMS
-- Front view shows: X (left-right) and Z (bottom-top)
-- Top view shows: X (left-right) and Y (back-front, depth)
-- Side view shows: Y (left-right, depth) and Z (bottom-top)
+You are provided with:
+1. Pre-computed geometric regions (with exact x, y, width, depth, z_min, z_max)
+2. Original 2D view images (front, top, side)
+3. Original 2D view JSON data
 
-STEP 2: EXTRACT BASE DIMENSIONS FROM EACH VIEW
+Your task is to classify each region semantically:
 
-For FRONT VIEW (X-Z plane):
-- Find the main rectangle's params: x, y, width, height
-- X range = [x, x+width]
-- Z range = [y, y+height]  (y is bottom, y+height is top)
-- Note: This gives you WIDTH (X) and HEIGHT (Z)
+For each region, determine:
+- "operation": "extrude" (adds material) or "cut" (removes material)
+- "role": Descriptive name like "table_top", "leg", "platform", "hole", "cavity", etc.
+- "height_label": "tall" (full height), "short" (reduced height/step), "flush" (no height), or null
 
-For TOP VIEW (X-Y plane):
-- Find the main rectangle's params: x, y, width, height  
-- X range = [x, x+width]
-- Y range = [y, y+height]  (y is back, y+height is front)
-- Note: This gives you WIDTH (X) and DEPTH (Y)
-
-For SIDE VIEW (Y-Z plane):
-- Find the main rectangle's params: x, y, width, height
-- Y range = [x, x+width]  (x represents Y in side view!)
-- Z range = [y, y+height]  (y is bottom, y+height is top)
-- Note: This gives you DEPTH (Y) and HEIGHT (Z)
-
-STEP 3: ALIGN COORDINATE SYSTEMS
-- The views may have different origins (different x,y starting points)
-- To find the TRUE 3D position, use the MINIMUM values:
-  - position.x = min(front_view.x, top_view.x)
-  - position.y = min(top_view.y, side_view.x)  (side_view.x is Y!)
-  - position.z = min(front_view.y, side_view.y)  (both are Z bottom)
-
-STEP 4: CALCULATE 3D DIMENSIONS
-- dimensions.width = X span = max(front_view.x+width, top_view.x+width) - position.x
-- dimensions.depth = Y span = max(top_view.y+height, side_view.x+width) - position.y
-- dimensions.height = Z span = max(front_view.y+height, side_view.y+height) - position.z
-
-STEP 5: HANDLE INTERIOR LINES (SPLITS)
-- Vertical lines in FRONT view (constant X) = split along X-axis (different Y or Z regions)
-- Horizontal lines in TOP view (constant Y) = split along Y-axis (different Z levels)
-- Horizontal lines in SIDE view (constant Z) = split along Z-axis (different X or Y regions)
-- When you see a split line, create SEPARATE features for each region
-- Each region gets its own position and dimensions
-
-STEP 6: MATCH SHAPES ACROSS VIEWS
-- A 3D feature appears in ALL THREE views
-- Match by checking if X ranges overlap (front & top), Y ranges overlap (top & side), Z ranges overlap (front & side)
-- If a shape only appears in 1-2 views, it might be a cut or a partial feature
-
-STEP 7: DETERMINE FEATURE TYPE
-- "extrude": Solid material (most features)
-- "cut": Hole, cavity, or removed material (usually smaller, inside another shape)
-
-CRITICAL RULES:
-1. position.x/y/z MUST be the minimum corner (bottom-left-back in 3D space)
-2. dimensions MUST be positive and match across views where they should
-3. If dimensions don't match, use the LARGER value (some views may show partial features)
-4. Interior lines create SEPARATE features - don't merge them
-5. Use EXACT values from JSON params, not approximate
+RULES:
+- Look at the images to understand what each region represents
+- Most regions are "extrude" (solid material)
+- "cut" is for holes, cavities, or removed material (usually smaller, inside another region)
+- "height_label" helps identify stepped/leveled surfaces
+- Use the images to understand context - is this a table? A platform? A block with holes?
 
 OUTPUT FORMAT - STRICTLY JSON ONLY:
 
 {json.dumps(target_schema_example, indent=2)}
 
-VALIDATION CHECKLIST before outputting:
-✓ position.x = minimum X from all views
-✓ position.y = minimum Y from top/side views  
-✓ position.z = minimum Z from front/side views
-✓ dimensions.width matches X span
-✓ dimensions.depth matches Y span
-✓ dimensions.height matches Z span
-✓ Each feature has unique id
-✓ source_shapes references correct shape IDs from JSON
-
-OUTPUT ONLY JSON. NO EXPLANATIONS. NO MARKDOWN.
-"""
-
-    # Extract key values for easier reference
-    def extract_key_values(view_data, view_name):
-        shapes = view_data.get("shapes", [])
-        lines = view_data.get("lines", [])
-        summary = {"view": view_name, "shapes": [], "lines": []}
-        
-        for shape in shapes:
-            if shape.get("type") == "rectangle":
-                params = shape.get("params", {})
-                summary["shapes"].append({
-                    "id": shape.get("id"),
-                    "x": params.get("x"),
-                    "y": params.get("y"),
-                    "width": params.get("width"),
-                    "height": params.get("height"),
-                    "x_range": [params.get("x"), params.get("x", 0) + params.get("width", 0)],
-                    "y_range": [params.get("y"), params.get("y", 0) + params.get("height", 0)]
-                })
-        
-        for line in lines:
-            summary["lines"].append({
-                "id": line.get("id"),
-                "start": line.get("start"),
-                "end": line.get("end"),
-                "is_vertical": abs(line.get("start", [0,0])[0] - line.get("end", [0,0])[0]) < 2,
-                "is_horizontal": abs(line.get("start", [0,0])[1] - line.get("end", [0,0])[1]) < 2
-            })
-        
-        return summary
-    
-    front_summary = extract_key_values(front, "front")
-    top_summary = extract_key_values(top, "top")
-    side_summary = extract_key_values(side, "side")
-    
-    summary_text = f"""
-EXTRACTED VALUES FROM JSON (for reference):
-
-FRONT VIEW (X-Z plane):
-{json.dumps(front_summary, indent=2)}
-
-TOP VIEW (X-Y plane):
-{json.dumps(top_summary, indent=2)}
-
-SIDE VIEW (Y-Z plane):
-{json.dumps(side_summary, indent=2)}
-
-FULL JSON DATA:
-{json.dumps({"front_view": front, "top_view": top, "side_view": side}, indent=2)}
+REQUIREMENTS:
+- Output one entry per region_id
+- Do NOT include any geometric dimensions (x, y, width, depth, height) - those are already computed
+- Do NOT include position - that's already computed
+- Only provide: region_id, operation, role, height_label
+- Output ONLY JSON. NO EXPLANATIONS. NO MARKDOWN.
 """
     
-    prompt = instructions + "\n\n" + summary_text
+    regions_text = f"""
+PRE-COMPUTED GEOMETRIC REGIONS:
+{json.dumps(regions_data, indent=2)}
+
+ORIGINAL 2D VIEW DATA (for reference):
+Front View: {json.dumps(front, indent=2)}
+Top View: {json.dumps(top, indent=2)}
+Side View: {json.dumps(side, indent=2)}
+"""
+    
+    prompt = instructions + "\n\n" + regions_text
     return prompt
 
 
@@ -312,6 +202,115 @@ def extract_json_from_text(text: str) -> Dict[str, Any]:
     return json.loads(json_str)
 
 
+def merge_geometry_and_semantics(
+    regions_data: Dict[str, Any],
+    semantics_data: Dict[str, Any]
+) -> Dict[str, Any]:
+    """
+    Merge pre-computed geometry with LLM semantic classification into final 3D feature JSON.
+    
+    Args:
+        regions_data: Output from geometry_solver.solve_geometry()
+        semantics_data: Output from LLM (region classifications)
+    
+    Returns:
+        Final 3D feature JSON compatible with house_generator.generate_model()
+    """
+    regions = regions_data.get("regions", [])
+    semantic_features = semantics_data.get("features", [])
+    
+    # Create lookup map for semantics
+    semantics_map = {}
+    for feat in semantic_features:
+        region_id = feat.get("region_id")
+        if region_id:
+            semantics_map[region_id] = feat
+    
+    # Build final features
+    final_features = []
+    used_ids = set()  # Track used IDs to ensure uniqueness
+    
+    for region in regions:
+        region_id = region.get("id")
+        semantic = semantics_map.get(region_id, {})
+        
+        # Defaults if LLM didn't classify
+        operation = semantic.get("operation", "extrude")
+        role = semantic.get("role", region_id)
+        height_label = semantic.get("height_label")
+        
+        # Ensure unique ID
+        base_id = role
+        feature_id = base_id
+        counter = 1
+        while feature_id in used_ids:
+            feature_id = f"{base_id}_{counter}"
+            counter += 1
+        used_ids.add(feature_id)
+        
+        # Extract geometry
+        x = region.get("x", 0.0)
+        y = region.get("y", 0.0)
+        width = region.get("width", 0.0)
+        depth = region.get("depth", 0.0)
+        z_min = region.get("z_min", 0.0)
+        z_max = region.get("z_max", 0.0)
+        base_height = region.get("height", z_max - z_min)
+        
+        # Adjust height based on height_label if provided
+        # But preserve the geometry solver's computed height as default
+        height = base_height
+        
+        if height_label == "short" and len(regions) > 1:
+            # Find the tallest region
+            max_height = max(r.get("height", 0) for r in regions)
+            # Use a reasonable fraction (could be improved with better step detection)
+            # For now, use 50% of max height
+            height = max_height * 0.5
+        elif height_label == "flush":
+            height = 0.0
+        elif height_label == "tall":
+            # Use full height (already set)
+            height = base_height
+        # If height_label is None or unknown, use base_height (already set)
+        
+        # Build feature
+        feature = {
+            "id": feature_id,
+            "type": operation,
+            "profile": {
+                "shape": "rectangle",
+                "width": width,
+                "height": height  # Profile height (Z dimension)
+            },
+            "dimensions": {
+                "width": width,
+                "depth": depth,
+                "height": height
+            },
+            "position": {
+                "x": x,
+                "y": y,
+                "z": z_min
+            },
+            "source_region": region_id
+        }
+        
+        final_features.append(feature)
+    
+    return {
+        "coordinate_system": {
+            "origin": {"x": 0, "y": 0, "z": 0},
+            "axes": {
+                "front_view": {"horizontal": "x", "vertical": "z"},
+                "top_view": {"horizontal": "x", "vertical": "y"},
+                "side_view": {"horizontal": "y", "vertical": "z"}
+            }
+        },
+        "features": final_features
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description=(
@@ -353,17 +352,31 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    # Determine base directory for resolving image paths
-    base_dir = Path(args.front).parent if Path(args.front).parent != Path(".") else None
-
-    # Load JSON files
-    print("Loading 2D view JSON files...")
+    print("=" * 60)
+    print("2D → 3D RECONSTRUCTION PIPELINE")
+    print("=" * 60)
+    
+    # STEP 1: Solve geometry deterministically (priority-based)
+    print("\n[Step 1/3] Solving geometry from 2D views...")
+    try:
+        regions_data = solve_geometry(args.top, args.side, args.front)
+        print(f"✓ Extracted {len(regions_data['regions'])} regions")
+        print(f"  X/Y source: {regions_data['metadata']['x_source']}, {regions_data['metadata']['y_source']}")
+        print(f"  Z source: {regions_data['metadata']['z_source']}")
+    except Exception as e:
+        print(f"✗ Geometry solver failed: {e}")
+        raise
+    
+    # STEP 2: LLM semantic classification
+    print("\n[Step 2/3] Classifying regions semantically (LLM)...")
+    
+    # Load JSON files for LLM context
     front = load_json(args.front)
     top = load_json(args.top)
     side = load_json(args.side)
-
-    # Load actual images for multimodal input
-    print("Loading images for multimodal analysis...")
+    
+    # Load images for multimodal input
+    base_dir = Path(args.front).parent if Path(args.front).parent != Path(".") else None
     front_img = load_image_from_json(front, base_dir)
     top_img = load_image_from_json(top, base_dir)
     side_img = load_image_from_json(side, base_dir)
@@ -377,11 +390,11 @@ def main() -> None:
     if side_img:
         image_labels.append("side_view")
     
+    # Build semantic prompt
+    prompt = build_semantic_prompt(regions_data, front, top, side)
+    
     if not images:
-        print("Warning: No images found. Falling back to text-only mode.")
-        # Fallback to text-only
-        prompt = build_prompt(front, top, side)
-        # Use a simpler text-only call
+        print("Warning: No images found. Using text-only mode.")
         load_dotenv()
         api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
@@ -392,16 +405,43 @@ def main() -> None:
         raw_text = response.text or ""
     else:
         print(f"Using multimodal input with {len(images)} images")
-        prompt = build_prompt(front, top, side)
         raw_text = call_gemini_multimodal(prompt, images, image_labels, args.model)
     
-    print("Extracting JSON from response...")
-    features_json = extract_json_from_text(raw_text)
-
+    print("Extracting semantic classifications from LLM response...")
+    try:
+        semantics_json = extract_json_from_text(raw_text)
+        print(f"✓ Classified {len(semantics_json.get('features', []))} regions")
+    except Exception as e:
+        print(f"✗ Failed to parse LLM response: {e}")
+        print(f"Raw response: {raw_text[:500]}...")
+        raise
+    
+    # STEP 3: Merge geometry + semantics
+    print("\n[Step 3/3] Merging geometry and semantics...")
+    try:
+        final_features_json = merge_geometry_and_semantics(regions_data, semantics_json)
+        print(f"✓ Generated {len(final_features_json['features'])} final features")
+        
+        # Debug: Print first feature details
+        if final_features_json['features']:
+            feat = final_features_json['features'][0]
+            print(f"\n  Sample feature '{feat['id']}':")
+            print(f"    Position: {feat['position']}")
+            print(f"    Dimensions: {feat['dimensions']}")
+            print(f"    Type: {feat['type']}")
+    except Exception as e:
+        print(f"✗ Merge failed: {e}")
+        import traceback
+        traceback.print_exc()
+        raise
+    
+    # Save output
     with open(args.output, "w", encoding="utf-8") as f:
-        json.dump(features_json, f, indent=2)
-
-    print(f"✓ Saved 3D feature JSON to {args.output}")
+        json.dump(final_features_json, f, indent=2)
+    
+    print(f"\n{'=' * 60}")
+    print(f"✓ SUCCESS: Saved 3D feature JSON to {args.output}")
+    print(f"{'=' * 60}")
 
 
 if __name__ == "__main__":
